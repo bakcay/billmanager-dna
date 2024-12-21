@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mgrdata>
+  <plugin name="pmdomainnameapi">
+    <group>processing_module</group>
+    <params>
+      <type name="domain"/>
+    </params>
+    <msg name="desc_short" lang="ru">DomainNameAPI Регистратор</msg>
+    <msg name="desc_short" lang="en">DomainNameAPI Registrar</msg>
+    <msg name="desc_full" lang="ru">Модуль регистрации доменов через DomainNameAPI</msg>
+    <msg name="desc_full" lang="en">Domain registration module via DomainNameAPI</msg>
+    <msg name="price" lang="ru">Бесплатно</msg>
+    <msg name="price" lang="en">Free</msg>
+  </plugin>
+
+
+
+  <metadata name="processing.edit.pmdomainnameapi" type="form">
+    <form title="name">
+      <page name="connect">
+        <field name="registrar_name">
+          <input name="registrar_name" required="yes" type="text"/>
+        </field>
+        <field name="dna_username">
+          <input name="dna_username" required="yes" type="text"/>
+        </field>
+        <field name="dna_password">
+          <input name="dna_password" required="yes" type="password" crypted="yes"/>
+        </field>
+        <field name="test_mode">
+          <input name="test_mode" type="checkbox"/>
+        </field>
+      </page>
+    </form>
+  </metadata>
+
+  <lang name="en">
+    <messages name="label_processing_modules">
+      <msg name="pmdomainnameapi">DomainNameAPI Registrar</msg>
+      <msg name="module_pmdomainnameapi">DomainNameAPI Registrar</msg>
+    </messages>
+    <messages name="processing.edit.pmdomainnameapi">
+      <msg name="registrar_name">Name of Registrar</msg>
+      <msg name="hint_registrar_name">Name of registrar for WHOIS</msg>
+      <msg name="dna_username">DomainNameAPI Username</msg>
+      <msg name="hint_dna_username">Your DomainNameAPI account username</msg>
+      <msg name="dna_password">DomainNameAPI Password</msg>
+      <msg name="hint_dna_password">Your DomainNameAPI account password</msg>
+      <msg name="test_mode">Test Mode</msg>
+      <msg name="hint_test_mode">Enable test mode for development</msg>
+      <!-- Validation messages -->
+      <msg name="error_dna_username_required">DomainNameAPI username is required</msg>
+      <msg name="error_dna_username_length">Username must be between 3 and 64 characters</msg>
+      <msg name="error_dna_password_required">DomainNameAPI password is required</msg>
+      <msg name="error_dna_password_length">Password must be between 6 and 64 characters</msg>
+    </messages>
+  </lang>
+
+  <lang name="ru">
+    <messages name="label_processing_modules">
+      <msg name="pmdomainnameapi">DomainNameAPI Регистратор</msg>
+      <msg name="module_pmdomainnameapi">DomainNameAPI Регистратор</msg>
+    </messages>
+    <messages name="processing.edit.pmdomainnameapi">
+      <msg name="registrar_name">Название регистратора</msg>
+      <msg name="hint_registrar_name">Название регистратора для WHOIS</msg>
+      <msg name="dna_username">Имя пользователя DomainNameAPI</msg>
+      <msg name="hint_dna_username">Ваше имя пользователя DomainNameAPI</msg>
+      <msg name="dna_password">Пароль DomainNameAPI</msg>
+      <msg name="hint_dna_password">Ваш пароль DomainNameAPI</msg>
+      <msg name="test_mode">Тестовый режим</msg>
+      <msg name="hint_test_mode">Включить тестовый режим для разработки</msg>
+      <!-- Validation messages -->
+      <msg name="error_dna_username_required">Требуется имя пользователя DomainNameAPI</msg>
+      <msg name="error_dna_username_length">Имя пользователя должно быть от 3 до 64 символов</msg>
+      <msg name="error_dna_password_required">Требуется пароль DomainNameAPI</msg>
+      <msg name="error_dna_password_length">Пароль должен быть от 6 до 64 символов</msg>
+    </messages>
+  </lang>
+
+  <lang name="tr">
+    <messages name="label_processing_modules">
+      <msg name="pmdomainnameapi">DomainNameAPI Alan Adı Sağlayıcı</msg>
+      <msg name="module_pmdomainnameapi">DomainNameAPI Alan Adı Sağlayıcı</msg>
+    </messages>
+    <messages name="processing.edit.pmdomainnameapi">
+      <msg name="registrar_name">Alan Adı Sağlayıcı Adı</msg>
+      <msg name="hint_registrar_name">WHOIS için alan adı sağlayıcı adı</msg>
+      <msg name="dna_username">DomainNameAPI Kullanıcı Adı</msg>
+      <msg name="hint_dna_username">DomainNameAPI hesap kullanıcı adınız</msg>
+      <msg name="dna_password">DomainNameAPI Şifre</msg>
+      <msg name="hint_dna_password">DomainNameAPI hesap şifreniz</msg>
+      <msg name="test_mode">Test Modu</msg>
+      <msg name="hint_test_mode">Geliştirme için test modunu etkinleştir</msg>
+      <!-- Doğrulama mesajları -->
+      <msg name="error_dna_username_required">DomainNameAPI kullanıcı adı gerekli</msg>
+      <msg name="error_dna_username_length">Kullanıcı adı 3-64 karakter arasında olmalı</msg>
+      <msg name="error_dna_password_required">DomainNameAPI şifre gerekli</msg>
+      <msg name="error_dna_password_length">Şifre 6-64 karakter arasında olmalı</msg>
+    </messages>
+  </lang>
+
+  <lang name="de">
+    <messages name="label_processing_modules">
+      <msg name="pmdomainnameapi">DomainNameAPI Registrar</msg>
+      <msg name="module_pmdomainnameapi">DomainNameAPI Registrar</msg>
+    </messages>
+    <messages name="processing.edit.pmdomainnameapi">
+      <msg name="registrar_name">Name des Registrars</msg>
+      <msg name="hint_registrar_name">Name des Registrars für WHOIS</msg>
+      <msg name="dna_username">DomainNameAPI Benutzername</msg>
+      <msg name="hint_dna_username">Ihr DomainNameAPI Benutzername</msg>
+      <msg name="dna_password">DomainNameAPI Passwort</msg>
+      <msg name="hint_dna_password">Ihr DomainNameAPI Passwort</msg>
+      <msg name="test_mode">Testmodus</msg>
+      <msg name="hint_test_mode">Testmodus für Entwicklung aktivieren</msg>
+      <!-- Validierungsmeldungen -->
+      <msg name="error_dna_username_required">DomainNameAPI Benutzername ist erforderlich</msg>
+      <msg name="error_dna_username_length">Benutzername muss zwischen 3 und 64 Zeichen lang sein</msg>
+      <msg name="error_dna_password_required">DomainNameAPI Passwort ist erforderlich</msg>
+      <msg name="error_dna_password_length">Passwort muss zwischen 6 und 64 Zeichen lang sein</msg>
+    </messages>
+  </lang>
+
+  <lang name="nl">
+    <messages name="label_processing_modules">
+      <msg name="pmdomainnameapi">DomainNameAPI Registrar</msg>
+      <msg name="module_pmdomainnameapi">DomainNameAPI Registrar</msg>
+    </messages>
+    <messages name="processing.edit.pmdomainnameapi">
+      <msg name="registrar_name">Naam van Registrar</msg>
+      <msg name="hint_registrar_name">Naam van registrar voor WHOIS</msg>
+      <msg name="dna_username">DomainNameAPI Gebruikersnaam</msg>
+      <msg name="hint_dna_username">Uw DomainNameAPI gebruikersnaam</msg>
+      <msg name="dna_password">DomainNameAPI Wachtwoord</msg>
+      <msg name="hint_dna_password">Uw DomainNameAPI wachtwoord</msg>
+      <msg name="test_mode">Testmodus</msg>
+      <msg name="hint_test_mode">Testmodus inschakelen voor ontwikkeling</msg>
+      <!-- Validatie berichten -->
+      <msg name="error_dna_username_required">DomainNameAPI gebruikersnaam is vereist</msg>
+      <msg name="error_dna_username_length">Gebruikersnaam moet tussen 3 en 64 tekens zijn</msg>
+      <msg name="error_dna_password_required">DomainNameAPI wachtwoord is vereist</msg>
+      <msg name="error_dna_password_length">Wachtwoord moet tussen 6 en 64 tekens zijn</msg>
+    </messages>
+  </lang>
+</mgrdata>

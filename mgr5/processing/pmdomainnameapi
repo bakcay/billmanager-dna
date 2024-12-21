@@ -1,0 +1,667 @@
+#!/usr/bin/php
+<?php
+
+/**
+ * Example of domain registration module used connection to database.
+ * All domains are virtual and stored in MySQL DB provided by settings
+ */
+
+set_include_path(get_include_path() . PATH_SEPARATOR . "/usr/local/mgr5/include/php");
+define('__MODULE__', "pmdomainnameapi");
+
+
+require_once 'DomainNameAPI_PHPLibrary.php';
+require_once 'bill_util.php';
+
+/**
+ * [$longopts description]
+ * @var array
+ */
+$longopts  = array
+(
+    "command:",
+    "subcommand:",
+    "id:",
+    "item:",
+    "lang:",
+    "module:",
+    "itemtype:",
+    "intname:",
+    "param:",
+    "value:",
+    "runningoperation:",
+    "level:",
+    "addon:",
+// registrar specific
+    "tld:",
+    "searchstring:",
+);
+
+$options = getopt("", $longopts);
+
+function GetConnection() {
+	$param = LocalQuery("paramlist", array());
+	$result = $param->xpath('//elem/*');
+
+	$param_map = array();
+	$param_map["DBHost"] = "localhost";
+	$param_map["DBUser"] = "root";
+	$param_map["DBPassword"] = "";
+	$param_map["DBName"] = "billmgr";
+
+	while(list( , $node) = each($result)) {
+	    $param_map[$node->getName()] = $node;
+	}
+
+	return new DB($param_map["DBHost"], $param_map["DBUser"], $param_map["DBPassword"], $param_map["DBName"]);
+}
+
+function ItemParam($db, $iid) {
+	$res = $db->query("SELECT i.id AS item_id, i.processingmodule AS item_module, i.period AS item_period, i.status AS item_status, i.expiredate,  tld.name AS tld_name 
+					   FROM item i 
+					   JOIN pricelist p ON p.id = i.pricelist 
+					   JOIN tld ON tld.id = p.intname 
+					   WHERE i.id=" . $iid);
+
+	if ($res == FALSE)
+		throw new ISPErrorException("query", $db->error);
+
+    $param = $res->fetch_assoc();
+
+    $param_res = $db->query("SELECT intname, value FROM itemparam WHERE item = ".$iid);
+    while ($row = $param_res->fetch_assoc()) {
+    	$param[$row["intname"]] = $row["value"];
+    }
+
+    return $param;
+}
+
+function ItemProfiles($db, $iid, $module) {
+	$param = array();
+	$res = $db->query("SELECT sp2i.service_profile AS service_profile, sp2i.type AS type, sp2p.externalid AS externalid, sp2p.externalpassword AS externalpassword 
+					   FROM item i 
+					   JOIN service_profile2item sp2i ON sp2i.item = i.id 
+					   LEFT JOIN service_profile2processingmodule sp2p ON sp2p.service_profile = sp2i.service_profile AND sp2i.type = sp2p.type AND sp2p.processingmodule = " . $module . "
+					   WHERE i.id=" . $iid);
+	while ($row = $res->fetch_assoc()) {
+    	$param[$row["type"]] = array();
+    	$param[$row["type"]]["externalid"] = $row["externalid"];
+    	$param[$row["type"]]["externalpassword"] = $row["externalpassword"];
+    	$param[$row["type"]]["service_profile"] = $row["service_profile"];
+
+    	$profile_res = $db->query("SELECT intname, value 
+					   FROM service_profileparam 
+					   WHERE service_profile=" . $row["service_profile"]);
+
+    	while ($profile_row = $profile_res->fetch_assoc()) {
+    		$param[$row["type"]][$profile_row["intname"]] = $profile_row["value"];
+    	}
+    }
+
+    return $param;
+}
+
+function GetDomainNameAPIConnection($module_id) {
+    // Get module parameters
+    $params = LocalQuery("processing.edit", array("elid" => $module_id));
+    
+    if (!isset($params->dna_username) || !isset($params->dna_password)) {
+        throw new ISPErrorException("INVALID_CREDENTIALS", "DomainNameAPI credentials not found");
+    }
+
+    try {
+        // Create API connection with namespace
+        $api = new \DomainNameApi\DomainNameAPI_PHPLibrary(
+            $params->dna_username, 
+            $params->dna_password,
+            isset($params->test_mode) && $params->test_mode == 'on'
+        );
+        
+        // Test connection with simple call
+        $details = $api->GetResellerDetails();
+        if ($details['result'] != 'OK') {
+            throw new ISPErrorException(
+                "CONNECTION_ERROR", 
+                "Could not connect to DomainNameAPI",
+                isset($details['error']) ? $details['error']['Message'] : 'Unknown error'
+            );
+        }
+        
+        return $api;
+        
+    } catch (Exception $e) {
+        throw new ISPErrorException(
+            "API_ERROR",
+            "DomainNameAPI connection error: " . $e->getMessage()
+        );
+    }
+}
+
+try {
+	$command = $options['command'];
+	$runningoperation = array_key_exists("runningoperation", $options) ? (int)$options['runningoperation'] : 0;
+	$item = array_key_exists("item", $options) ? (int)$options['item'] : 0;
+
+	Debug("command ". $options['command'] . ", item: " . $item . ", operation: " . $runningoperation);
+
+	if ($command == "features") {
+		/**
+		 * Build and output XML with module features and configuration
+		 */
+		$config_xml = simplexml_load_string($default_xml_string);
+
+		/**
+		 * Set supported itemtype 'domain'
+		 */
+		$itemtypes_node = $config_xml->addChild("itemtypes");
+		$itemtypes_node->addChild("itemtype")->addAttribute("name", "domain");
+
+		/**
+		 * Set settings param
+		 */
+		$params_node = $config_xml->addChild("params");
+		
+		// DomainNameAPI credentials
+		$dna_username = $params_node->addChild("param");
+		$dna_username->addAttribute("name", "dna_username");
+		
+		$dna_password = $params_node->addChild("param");
+		$dna_password->addAttribute("name", "dna_password");
+		$dna_password->addAttribute("crypted", "yes");
+		
+		$test_mode = $params_node->addChild("param");
+		$test_mode->addAttribute("name", "test_mode");
+		
+		// Registrar name only
+		$params_node->addChild("param")->addAttribute("name", "registrar_name");
+
+		/**
+		 * Set supported features
+		 */
+		$features_node = $config_xml->addChild("features");
+		$features_node->addChild("feature")->addAttribute("name", "check_connection");
+		$features_node->addChild("feature")->addAttribute("name", "tune_connection");
+		$features_node->addChild("feature")->addAttribute("name", "import");
+		$features_node->addChild("feature")->addAttribute("name", "open");
+		$features_node->addChild("feature")->addAttribute("name", "suspend");
+		$features_node->addChild("feature")->addAttribute("name", "resume");
+		$features_node->addChild("feature")->addAttribute("name", "close");
+		$features_node->addChild("feature")->addAttribute("name", "cancel_prolong");
+		$features_node->addChild("feature")->addAttribute("name", "setparam");
+		$features_node->addChild("feature")->addAttribute("name", "prolong");
+		$features_node->addChild("feature")->addAttribute("name", "transfer");
+		$features_node->addChild("feature")->addAttribute("name", "sync_item");
+		$features_node->addChild("feature")->addAttribute("name", "get_contact_type");
+		$features_node->addChild("feature")->addAttribute("name", "tune_service_profile");
+		$features_node->addChild("feature")->addAttribute("name", "validate_service_profile");
+		$features_node->addChild("feature")->addAttribute("name", "update_ns");
+		$features_node->addChild("feature")->addAttribute("name", "whois");
+
+		echo $config_xml->asXML();
+	}
+    elseif ($command == "tune_connection") {
+		// Get the connection form
+		$connection_form = simplexml_load_string(file_get_contents('php://stdin'));
+		
+		// Add test mode checkbox
+		$test_mode = $connection_form->addChild("check");
+		$test_mode->addAttribute("name", "test_mode");
+		$test_mode->addChild("msg", "test_mode");
+		
+		// Add validation rules
+		$rules = $connection_form->addChild("rules");
+		
+		// Username validation
+		$rule = $rules->addChild("rule");
+		$rule->addAttribute("field", "dna_username");
+		$rule->addAttribute("type", "text");
+		$rule->addAttribute("required", "yes");
+		$rule->addAttribute("min", "3");
+		$rule->addAttribute("max", "64");
+		
+		// Password validation
+		$rule = $rules->addChild("rule");
+		$rule->addAttribute("field", "dna_password");
+		$rule->addAttribute("type", "password");
+		$rule->addAttribute("required", "yes");
+		$rule->addAttribute("min", "6");
+		$rule->addAttribute("max", "64");
+		
+		echo $connection_form->asXML();
+	}
+    elseif ($command == "check_connection") {
+		$connection_param = simplexml_load_string(file_get_contents('php://stdin'));
+		
+		try {
+			// Create API connection
+			$api = new DomainNameAPI_PHPLibrary(
+				$connection_param->processingmodule->dna_username,
+				$connection_param->processingmodule->dna_password,
+				isset($connection_param->processingmodule->test_mode) && $connection_param->processingmodule->test_mode == 'on'
+			);
+			
+			// Test connection with GetResellerDetails
+			$check = $api->GetResellerDetails();
+			
+			if ($check["result"] != "OK") {
+				throw new ISPErrorException(
+					"CONNECTION_ERROR",
+					"Could not connect to DomainNameAPI",
+						isset($check["error"]["Details"]) ? $check["error"]["Details"] : "Unknown error"
+				);
+			}
+			
+			echo $default_xml_string;
+			
+		} catch (Exception $e) {
+			throw new ISPErrorException(
+				"API_ERROR",
+				"DomainNameAPI connection error", 
+				$e->getMessage()
+			);
+		}
+	}
+    elseif ($command == "get_contact_type") {
+		/**
+		 * Return XML config for TLD
+		 */
+		$config_xml = simplexml_load_string($default_xml_string);
+		$tld = $options['tld'];
+
+		// DomainNameAPI contact types
+		// Registrant/Owner contact
+		$config_xml->addChild("contact_type", "registrant");
+		
+		// Administrative contact
+		$config_xml->addChild("contact_type", "administrative");
+		
+		// Technical contact
+		$config_xml->addChild("contact_type", "technical");
+		
+		// Billing contact
+		$config_xml->addChild("contact_type", "billing");
+
+		echo $config_xml->asXML();
+	}
+    elseif ($command == "whois") {
+		/**
+		 * Show whois data. Only if need self whois service
+		 */
+		$domain = $options['param'];
+		$whois_xml = simplexml_load_string($default_xml_string);
+		
+		// Boş whois yanıtı döndür
+		$whois_xml->addChild("whois", "");
+		
+		echo $whois_xml->asXML();
+	}
+    elseif ($command == "tune_service_profile") {
+		/**
+		 * Tune service profile create form
+		 */
+		$tld = $options['param'];
+		$contact_type = $options['value'];
+
+		$service_profile_form = simplexml_load_string(file_get_contents('php://stdin'));
+
+		if ($tld == "my" && $contact_type == "customer") {
+			Debug("Add usage select");
+
+			$select = $service_profile_form->addChild("slist");
+			$select->addAttribute("name", "customer_my_usage");
+			$select->addChild("msg", "my_usage_personal")->addAttribute("key", "personal");
+			$select->addChild("msg", "my_usage_company")->addAttribute("key", "company");
+		}
+
+		echo $service_profile_form->asXML();
+	}
+    elseif ($command == "validate_service_profile") {
+		/**
+		 * Example of service profile validate. Check if agree checked
+		 */
+		$param_xml = simplexml_load_string(file_get_contents('php://stdin'));
+
+		$tld = $options['param'];
+
+		if ($tld == "my" && $param_xml->customer_my_agree != "on")
+			throw new ISPErrorException("customer_agree", "customer_my_agree");
+
+	}
+    elseif ($command == "open") {
+        // Get item parameters and API connection
+        $db = GetConnection();
+        $iid = $options['item'];
+        $item_param = ItemParam($db, $iid);
+        
+        try {
+            // Get API connection
+            $api = GetDomainNameAPIConnection($item_param["item_module"]);
+            
+            // Get contact profiles
+            $profile_params = ItemProfiles($db, $iid, $item_param["item_module"]);
+            
+            // Prepare nameservers array
+            $nameservers = [];
+            $ns_num = 0;
+            while (array_key_exists("ns" . $ns_num, $item_param)) {
+                $nameservers[] = $item_param["ns" . $ns_num];
+                $ns_num++;
+            }
+            
+            // If no nameservers provided, use defaults
+            if (empty($nameservers)) {
+                $nameservers = ["ns1.pmdomainnameapi.com", "ns2.pmdomainnameapi.com"];
+            }
+            
+            // Prepare contacts array for API
+            $contacts = [];
+            foreach (['registrant', 'administrative', 'technical', 'billing'] as $type) {
+                if (!isset($profile_params[$type])) {
+                    throw new ISPErrorException("MISSING_CONTACT", "Missing contact information", "Contact type: " . $type);
+                }
+                
+                $contact = [
+                    "FirstName"        => $profile_params[$type]["firstname"],
+                    "LastName"         => $profile_params[$type]["lastname"],
+                    "Company"          => $profile_params[$type]["company"] ?? '',
+                    "EMail"            => $profile_params[$type]["email"],
+                    "AddressLine1"     => $profile_params[$type]["address"],
+                    "AddressLine2"     => '',
+                    "AddressLine3"     => '',
+                    "City"             => $profile_params[$type]["city"],
+                    "Country"          => $profile_params[$type]["country"],
+                    "Fax"              => $profile_params[$type]["fax"] ?? '',
+                    "FaxCountryCode"   => '90',
+                    "Phone"            => $profile_params[$type]["phone"],
+                    "PhoneCountryCode" => '90',
+                    "Type"             => 'Contact',
+                    "ZipCode"          => $profile_params[$type]["zipcode"] ?? '',
+                    "State"            => $profile_params[$type]["state"] ?? ''
+                ];
+                
+                $contacts[ucfirst($type)] = $contact;
+            }
+            
+            // Register domain
+            $result = $api->RegisterWithContactInfo(
+                $item_param["domain"],           // Domain name
+                $item_param["item_period"],      // Registration period
+                $contacts,                       // Contact information
+                $nameservers,                    // Nameservers
+                true,                            // Theft protection lock
+                false,                           // Privacy protection
+                []                              // No additional attributes
+            );
+            
+            if ($result["result"] != "OK") {
+                throw new ISPErrorException(
+                    "REGISTRATION_FAILED",
+                    "Domain registration failed",
+                    isset($result["error"]["Details"]) ? $result["error"]["Details"] : "Unknown error"
+                );
+            }
+            
+            // Open service in BILLmanager
+            LocalQuery("domain.open", array("elid" => $item, "sok" => "ok"));
+            
+        } catch (Exception $e) {
+            throw new ISPErrorException(
+                "API_ERROR",
+                "Domain registration error",
+                $e->getMessage()
+            );
+        }
+    } elseif ($command == "transfer") {
+        // Get item parameters and API connection
+        $db = GetConnection();
+        $iid = $options['item'];
+        $item_param = ItemParam($db, $iid);
+        
+        try {
+            // Get API connection
+            $api = GetDomainNameAPIConnection($item_param["item_module"]);
+            
+            // Get auth code from parameters
+            if (!isset($item_param["auth_code"]) || empty($item_param["auth_code"])) {
+                throw new ISPErrorException(
+                    "MISSING_AUTH_CODE",
+                    "Transfer auth code is required",
+                    "Please provide valid auth code"
+                );
+            }
+
+            // Start domain transfer
+            $result = $api->Transfer(
+                $item_param["domain"],           // Domain name
+                $item_param["auth_code"],        // Auth/EPP code
+                $item_param["item_period"]       // Transfer period
+            );
+            
+            if ($result["result"] != "OK") {
+                throw new ISPErrorException(
+                    "TRANSFER_FAILED",
+                    "Domain transfer failed",
+                    isset($result["error"]["Details"]) ? $result["error"]["Details"] : "Unknown error"
+                );
+            }
+            
+            // Open service in BILLmanager
+            LocalQuery("domain.open", array("elid" => $item, "sok" => "ok"));
+            
+        } catch (Exception $e) {
+            throw new ISPErrorException(
+                "API_ERROR",
+                "Domain transfer error",
+                $e->getMessage()
+            );
+        }
+	} elseif ($command == "prolong") {
+		// Get item parameters and API connection
+		$db = GetConnection();
+		$iid = $options['item'];
+		$item_param = ItemParam($db, $iid);
+		
+		try {
+			// Get API connection
+			$api = GetDomainNameAPIConnection($item_param["item_module"]);
+			
+			// Renew domain
+			$result = $api->Renew(
+				$item_param["domain"],           // Domain name
+				$item_param["item_period"]       // Renewal period
+			);
+			
+			if ($result["result"] != "OK") {
+				throw new ISPErrorException(
+					"RENEWAL_FAILED",
+					"Domain renewal failed",
+					isset($result["error"]["Details"]) ? $result["error"]["Details"] : "Unknown error"
+				);
+			}
+			
+			// Notify BILLmanager about successful renewal
+			LocalQuery("service.postprolong", array("elid" => $item, "sok" => "ok"));
+			
+		} catch (Exception $e) {
+			throw new ISPErrorException(
+				"API_ERROR",
+				"Domain renewal error",
+				$e->getMessage()
+			);
+		}
+	} elseif ($command == "cancel_prolong") {
+		// No example at now
+		// Cancel auto prolong for domain via registrar API if need for provided tld
+	} elseif ($command == "sync_item") {
+		// Get item parameters and API connection
+		$db = GetConnection();
+		$iid = $options['item'];
+		$item_param = ItemParam($db, $iid);
+		
+		try {
+			// Get API connection
+			$api = GetDomainNameAPIConnection($item_param["item_module"]);
+			
+			// Get domain info from registry
+			$result = $api->SyncFromRegistry($item_param["domain"]);
+			
+			if ($result["result"] != "OK") {
+				throw new ISPErrorException(
+					"SYNC_FAILED",
+					"Domain sync failed",
+					isset($result["error"]["Details"]) ? $result["error"]["Details"] : "Unknown error"
+				);
+			}
+			
+			// Update domain status in BILLmanager
+			if ($result["data"]["Status"] == "Active" || $result["data"]["Status"] == "clientTransferProhibited") {
+				LocalQuery("service.postresume", array("elid" => $item, "sok" => "ok"));
+				LocalQuery("service.setstatus", array("elid" => $item, "service_status" => "2"));
+			} else {
+				LocalQuery("service.postsuspend", array("elid" => $item, "sok" => "ok"));
+				LocalQuery("service.setstatus", array("elid" => $item, "service_status" => "8"));
+			}
+			
+			// Update expiration date if available
+			if (isset($result["data"]["Dates"]["Expiration"])) {
+				LocalQuery("service.setexpiredate", array(
+					"elid" => $item, 
+					"expiredate" => $result["data"]["Dates"]["Expiration"]
+				));
+			}
+			
+		} catch (Exception $e) {
+			throw new ISPErrorException(
+				"API_ERROR",
+				"Domain sync error",
+				$e->getMessage()
+			);
+		}
+	} elseif ($command == "update_ns") {
+		// Get item parameters and API connection
+		$db = GetConnection();
+		$iid = $options['item'];
+		$item_param = ItemParam($db, $iid);
+		
+		try {
+			// Get API connection
+			$api = GetDomainNameAPIConnection($item_param["item_module"]);
+			
+			// Prepare nameservers array
+			$nameservers = [];
+			$ns_num = 0;
+			while (array_key_exists("ns" . $ns_num, $item_param)) {
+				if (!empty($item_param["ns" . $ns_num])) {
+					$nameservers[] = $item_param["ns" . $ns_num];
+				}
+				$ns_num++;
+			}
+			
+			// Check if we have nameservers
+			if (empty($nameservers)) {
+				throw new ISPErrorException(
+					"MISSING_NS",
+					"No nameservers provided",
+					"At least one nameserver is required"
+				);
+			}
+			
+			// Update nameservers
+			$result = $api->ModifyNameServer(
+				$item_param["domain"],    // Domain name
+				$nameservers             // Nameservers array
+			);
+			
+			if ($result["result"] != "OK") {
+				throw new ISPErrorException(
+					"NS_UPDATE_FAILED",
+					"Nameserver update failed",
+					isset($result["error"]["Details"]) ? $result["error"]["Details"] : "Unknown error"
+				);
+			}
+			
+		} catch (Exception $e) {
+			throw new ISPErrorException(
+				"API_ERROR",
+				"Nameserver update error",
+				$e->getMessage()
+			);
+		}
+	} elseif ($command == "import") {
+		// Get module parameters and API connection
+		try {
+			// Get API connection
+			$api = GetDomainNameAPIConnection($options['module']);
+			
+			// Prepare search parameters
+			$search_params = [
+				'PageNumber' => 1,
+				'PageSize' => 100
+			];
+			
+			// Add search string if provided
+			if (array_key_exists("searchstring", $options) && !empty($options['searchstring'])) {
+				$search_params['SearchText'] = $options['searchstring'];
+			}
+			
+			// Get domain list from API
+			$result = $api->GetList($search_params);
+			
+			if ($result["result"] != "OK") {
+				throw new ISPErrorException(
+					"LIST_FAILED",
+					"Failed to get domain list",
+					isset($result["error"]["Details"]) ? $result["error"]["Details"] : "Unknown error"
+				);
+			}
+			
+			$db = GetConnection();
+			
+			// Process each domain
+			foreach ($result["data"]["Domains"] as $domain) {
+				// Get TLD ID
+				$tld_name = explode(".", $domain["DomainName"], 2)[1];
+				$tld_id = $db->query("SELECT id FROM tld WHERE name = '" . $db->real_escape_string($tld_name) . "'")->fetch_row()[0];
+				
+				// Prepare domain parameters
+				$domain_param = [
+					"sok" => "ok",
+					"expiredate" => $domain["Dates"]["Expiration"],
+					"module" => $options['module'],
+					"status" => ($domain["Status"] == "Active" || $domain["Status"] == "clientTransferProhibited") ? "2" : "8",
+					"import_pricelist_intname" => $tld_id,
+					"import_service_name" => $domain["DomainName"],
+					"domain" => $domain["DomainName"]
+				];
+				
+				// Import domain to BILLmanager
+				LocalQuery("processing.import.service", $domain_param);
+			}
+			
+		} catch (Exception $e) {
+			throw new ISPErrorException(
+				"API_ERROR",
+				"Domain import error",
+				$e->getMessage()
+			);
+		}
+	}
+} catch (Exception $e) {
+	if ($runningoperation > 0) {
+		// save error message for operation in BILLmanager
+		LocalQuery("runningoperation.edit", array("sok" => "ok", "elid" => $runningoperation, "errorxml" => $e,));
+
+		if ($item > 0) {
+			// set manual rerung
+			LocalQuery("runningoperation.setmanual", array("elid" => $runningoperation,));
+
+			// create task
+			$task_type = LocalQuery("task.gettype", array("operation" => $command,))->task_type;
+			if ($task_type != "") {
+				LocalQuery("task.edit", array("sok" => "ok", "item" => $item, "runningoperation" => $runningoperation, "type" => $task_type, ));
+			}
+		}
+	}
+
+	echo $e;
+}
